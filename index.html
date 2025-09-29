@@ -6,7 +6,7 @@
   <title>Simulador: Proyectil desde Cañón (móvil optimizado)</title>
   <style>
     :root{--bg:#0f1724;--card:#0b1220;--accent:#06b6d4;--muted:#94a3b8;}
-    html,body{height:100%;margin:0;font-family:Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;color: #e6eef6;background:linear-gradient(180deg,#071027,#071822);}
+    html,body{height:100%;margin:0;font-family:Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;color: #072033;background:linear-gradient(180deg,#e6f7ff,#e6f7ff);} /* page background claro */
     .app{display:flex;flex-direction:column;min-height:100vh;padding:10px;gap:8px}
 
     header{display:flex;align-items:center;justify-content:space-between;gap:8px}
@@ -17,14 +17,15 @@
 
     /* left: canvas, right: controls */
     .canvas-wrap{flex:1;display:flex;flex-direction:column;gap:6px}
-    canvas{background:linear-gradient(180deg,#083345,#042033);border-radius:12px;box-shadow:0 6px 20px rgba(2,6,23,.6);width:100%;}
+    /* remove canvas CSS bg: we draw it in JS so it's consistent on resize */
+    canvas{border-radius:12px;box-shadow:0 6px 20px rgba(2,6,23,.12);width:100%;display:block}
     #scene{height:48vh;min-height:260px}
     #chart{height:22vh;min-height:120px}
 
     .controls{width:320px;max-width:40vw;min-width:240px;background:rgba(8,14,20,.6);padding:12px;border-radius:12px;color:#dbeafe}
     .control-row{display:flex;flex-direction:column;gap:6px;margin-bottom:8px}
     label{font-size:0.85rem;color:var(--muted)}
-    input[type=range]{-webkit-appearance:none;height:32px;width:100%}
+    input[type=range]{-webkit-appearance:none;height:32px;width:100%;touch-action:none}
     input[type=range]::-webkit-slider-runnable-track{height:6px;background:#123;border-radius:6px}
     input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:var(--accent);margin-top:-6px}
     .buttons{display:flex;gap:8px;flex-wrap:wrap}
@@ -55,8 +56,8 @@
     <div class="main">
       <div class="stage">
         <div class="canvas-wrap">
-          <canvas id="scene"></canvas>
-          <canvas id="chart"></canvas>
+          <canvas id="scene" aria-label="Escena del proyectil"></canvas>
+          <canvas id="chart" aria-label="Gráfica de energía"></canvas>
         </div>
 
         <div class="controls" role="region" aria-label="Controles del simulador">
@@ -136,12 +137,186 @@
     };
 
     // escala (metros -> pixels) calculada dinámicamente según velocidad y ángulo para que la trayectoria quepa en pantalla
-    function computeScale(v0,angle){
-      // rango estimado para projectile: R = v0^2 * sin(2θ) / g (m)
-      const rad = angle*Math.PI/180;
+    function computeScale(v0,angleDeg){
+      const rad = angleDeg*Math.PI/180;
       const range = (v0*v0*Math.sin(2*rad))/sim.g;
       const maxRange = Math.max(range, 20);
-      // allow some margin
       const padding=40;
       const pxPerMeter = (scene.clientWidth - padding) / (maxRange || 1);
-      // ve
+      const H = (v0*v0*Math.sin(rad)*Math.sin(rad))/(2*sim.g);
+      const pxPerMeterY = (scene.clientHeight - padding) / Math.max(H*1.4, 10);
+      return {pxPerMeter: Math.min(pxPerMeter, pxPerMeterY), pxPerMeterY: Math.min(pxPerMeter, pxPerMeterY)};
+    }
+
+    // dibujado de escena
+    function drawScene(){
+      const ctx = scene.getContext('2d');
+      ctx.clearRect(0,0,scene.width,scene.height);
+      const w = scene.clientWidth, h = scene.clientHeight;
+
+      // background celeste (fijo)
+      ctx.save();
+      ctx.fillStyle = '#87CEEB'; // color celeste
+      ctx.fillRect(0,0,w,h);
+      // ground
+      ctx.fillStyle = '#2e8b57'; ctx.fillRect(0,h-30,w,30);
+      ctx.restore();
+
+      // cannon base at left-bottom
+      const cannonX = 30; const cannonY = h-30;
+      // draw barrel: use current angle control (visible immediately)
+      const angle = parseFloat(angleEl.value)*Math.PI/180;
+      ctx.save();
+      ctx.translate(cannonX,cannonY);
+      ctx.rotate(-angle);
+      // barrel - black
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0,-10,80,20); // ancho mayor para visibilidad
+      // barrel rim
+      ctx.strokeStyle = '#111'; ctx.lineWidth=2; ctx.strokeRect(0,-10,80,20);
+      ctx.restore();
+      // base (black circle)
+      ctx.fillStyle='#000'; ctx.beginPath(); ctx.arc(cannonX,cannonY,20,0,Math.PI*2); ctx.fill();
+      ctx.strokeStyle='#222'; ctx.lineWidth=2; ctx.stroke();
+
+      // draw trail
+      if(sim.trail.length>0){
+        ctx.strokeStyle='rgba(0,0,0,0.15)'; ctx.lineWidth=2; ctx.beginPath();
+        sim.trail.forEach((p,i)=>{ if(i===0) ctx.moveTo(p.px,p.py); else ctx.lineTo(p.px,p.py); }); ctx.stroke();
+      }
+
+      // draw projectile (last point) in red
+      if(sim.trail.length>0){
+        const last = sim.trail[sim.trail.length-1];
+        if(last){ ctx.fillStyle='#ff3333'; ctx.beginPath(); ctx.arc(last.px,last.py,8,0,Math.PI*2); ctx.fill();
+          // small shadow on ground
+          const shadowY = Math.min(h-25, last.py+12);
+          ctx.fillStyle='rgba(0,0,0,0.12)'; ctx.beginPath(); ctx.ellipse(last.px,shadowY,12,5,0,0,Math.PI*2); ctx.fill();
+        }
+      }
+
+      // draw muzzle marker for reference
+      ctx.fillStyle='#111'; ctx.fillRect(cannonX+78,-2 + (cannonY - h), 4,4); // not visible in this coordinate system; skip
+
+      // labels
+      ctx.fillStyle='#022b36'; ctx.font='12px sans-serif'; ctx.fillText('Cañón',cannonX-8,cannonY-28);
+    }
+
+    // chart drawing
+    function drawChartBackground(){
+      const ctx = chart.getContext('2d');
+      ctx.clearRect(0,0,chart.width,chart.height);
+      const w=chart.clientWidth,h=chart.clientHeight;
+      // background oscuro para la gráfica
+      ctx.fillStyle='#021821'; ctx.fillRect(0,0,w,h);
+      // grid
+      ctx.strokeStyle='rgba(255,255,255,0.04)'; ctx.lineWidth=1;
+      for(let i=0;i<5;i++){ ctx.beginPath(); ctx.moveTo(0,(i+1)*h/6); ctx.lineTo(w,(i+1)*h/6); ctx.stroke(); }
+      ctx.fillStyle='#9fb6c7'; ctx.font='12px sans-serif'; ctx.fillText('Energía (J) — azul: KE, naranja: PE',8,14);
+    }
+
+    function drawChart(){
+      drawChartBackground();
+      const ctx = chart.getContext('2d');
+      const w=chart.clientWidth,h=chart.clientHeight;
+      const tHist = sim.timeHistory; const eHist = sim.energyHistory;
+      if(tHist.length<2) return;
+      let maxE = 0; eHist.forEach(e=>{ maxE=Math.max(maxE, e.ke, e.pe); });
+      if(maxE===0) maxE=1;
+      const tMax = tHist[tHist.length-1];
+      // KE
+      ctx.lineWidth=2; ctx.beginPath();
+      for(let i=0;i<eHist.length;i++){
+        const x = (tHist[i]/(tMax||1))*(w-10)+5;
+        const y = h - 20 - (eHist[i].ke/maxE)*(h-40);
+        if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+      }
+      ctx.strokeStyle='rgba(0,102,255,0.95)'; ctx.stroke();
+      // PE
+      ctx.beginPath();
+      for(let i=0;i<eHist.length;i++){
+        const x = (tHist[i]/(tMax||1))*(w-10)+5;
+        const y = h - 20 - (eHist[i].pe/maxE)*(h-40);
+        if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+      }
+      ctx.strokeStyle='rgba(255,140,0,0.95)'; ctx.stroke();
+      // legend
+      ctx.fillStyle='rgba(0,102,255,0.95)'; ctx.fillRect(w-145,18,10,8); ctx.fillStyle='#9fb6c7'; ctx.fillText('KE', w-130, 26);
+      ctx.fillStyle='rgba(255,140,0,0.95)'; ctx.fillRect(w-90,18,10,8); ctx.fillStyle='#9fb6c7'; ctx.fillText('PE', w-75, 26);
+    }
+
+    // lanzar proyectil
+    function startLaunch(){
+      // reset histories
+      sim.t=0; sim.trail=[]; sim.energyHistory=[]; sim.timeHistory=[];
+      sim.running=true; sim.paused=false; pauseBtn.textContent='Pausa';
+
+      const m = parseFloat(massEl.value);
+      const angleDeg = parseFloat(angleEl.value);
+      const v0 = parseFloat(speedEl.value);
+      const rad = angleDeg*Math.PI/180;
+      const vx = v0*Math.cos(rad);
+      const vy = v0*Math.sin(rad);
+
+      sim.vx = vx; sim.vy = -vy; // canvas sign convention
+      sim.x = 0; sim.y = 0; // metros; origen en boca
+      // compute scale para ajustar la vista
+      sim.scale = computeScale(v0, angleDeg);
+      // origin pixel
+      sim.originPx = {x:30, y: scene.clientHeight-30};
+
+      // push initial point
+      pushPoint();
+
+      if(!animLoop) animLoop = requestAnimationFrame(loop);
+    }
+
+    function pushPoint(){
+      const px = sim.originPx.x + sim.x*sim.scale.pxPerMeter;
+      const py = sim.originPx.y - sim.y*sim.scale.pxPerMeterY;
+      sim.trail.push({x:sim.x,y:sim.y,px,py});
+      const m = parseFloat(massEl.value);
+      const v = Math.sqrt(sim.vx*sim.vx + sim.vy*sim.vy);
+      const ke = 0.5*m*v*v;
+      const pe = m*sim.g*sim.y;
+      sim.energyHistory.push({ke,pe});
+      sim.timeHistory.push(sim.t);
+      // update numeric readouts
+      timeVal.textContent = sim.t.toFixed(2);
+      keVal.textContent = ke.toFixed(1);
+      peVal.textContent = pe.toFixed(1);
+    }
+
+    // integración (Euler estable para este demo)
+    function step(){
+      sim.t += sim.dt;
+      sim.vy += sim.g*sim.dt;
+      sim.x += sim.vx*sim.dt;
+      sim.y += -sim.vy*sim.dt;
+      if(sim.y < 0){
+        sim.y = 0;
+        pushPoint();
+        sim.running = false;
+        return;
+      }
+      pushPoint();
+    }
+
+    // loop de animación
+    let animLoop = null;
+    function loop(){
+      if(sim.running && !sim.paused){
+        step();
+      }
+      render();
+      if(sim.running || sim.paused){ animLoop = requestAnimationFrame(loop); }
+      else { drawChart(); cancelAnimationFrame(animLoop); animLoop = null; }
+    }
+
+    function render(){
+      drawScene();
+      drawChart();
+    }
+
+    // UI bindings: ahora actualizan la vista inmediatamente y funcionan antes de disparar
+    massEl.addEventListener('input', ()=>{ massLabel.textContent = parseFloat(massEl.value).t
