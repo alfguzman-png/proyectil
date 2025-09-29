@@ -319,4 +319,6 @@
     }
 
     // UI bindings: ahora actualizan la vista inmediatamente y funcionan antes de disparar
-    massEl.addEventListener('input', ()=>{ massLabel.textContent = parseFloat(massEl.value).t
+    massEl.addEventListener('input', ()=>{ massLabel.textContent = parseFloat(massEl.value).toFixed(1); drawScene(); });
+angleEl.addEventListener('input', ()=>{ angleLabel.textContent = angleEl.value; drawScene(); });
+speedEl.addEventListener('input', ()=>{ speedLabel.textContent = speedEl.value; drawScene(); });
