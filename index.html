@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>Simulador: Proyectil desde Cañón (móvil optimizado)</title>
+  <style>
+    :root{--bg:#0f1724;--card:#0b1220;--accent:#06b6d4;--muted:#94a3b8;}
+    html,body{height:100%;margin:0;font-family:Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;color: #e6eef6;background:linear-gradient(180deg,#071027,#071822);}
+    .app{display:flex;flex-direction:column;min-height:100vh;padding:10px;gap:8px}
+
+    header{display:flex;align-items:center;justify-content:space-between;gap:8px}
+    h1{font-size:1rem;margin:0;color:var(--accent)}
+
+    .main{display:flex;flex-direction:column;gap:8px}
+    .stage{display:flex;gap:8px}
+
+    /* left: canvas, right: controls */
+    .canvas-wrap{flex:1;display:flex;flex-direction:column;gap:6px}
+    canvas{background:linear-gradient(180deg,#083345,#042033);border-radius:12px;box-shadow:0 6px 20px rgba(2,6,23,.6);width:100%;}
+    #scene{height:48vh;min-height:260px}
+    #chart{height:22vh;min-height:120px}
+
+    .controls{width:320px;max-width:40vw;min-width:240px;background:rgba(8,14,20,.6);padding:12px;border-radius:12px;color:#dbeafe}
+    .control-row{display:flex;flex-direction:column;gap:6px;margin-bottom:8px}
+    label{font-size:0.85rem;color:var(--muted)}
+    input[type=range]{-webkit-appearance:none;height:32px;width:100%}
+    input[type=range]::-webkit-slider-runnable-track{height:6px;background:#123;border-radius:6px}
+    input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:var(--accent);margin-top:-6px}
+    .buttons{display:flex;gap:8px;flex-wrap:wrap}
+    button{flex:1;padding:10px 12px;border-radius:10px;border:0;background:var(--accent);color:#022;font-weight:600}
+    button.secondary{background:#334155;color:#e6eef6}
+
+    .readouts{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+    .readout{flex:1;min-width:110px;background:rgba(6,10,14,.4);padding:8px;border-radius:8px;text-align:center}
+    .num{font-weight:700;font-size:1.1rem}
+
+    /* responsive mobile */
+    @media (max-width:800px){
+      .stage{flex-direction:column}
+      .controls{width:100%}
+      #scene{height:42vh}
+      #chart{height:22vh}
+      button{padding:12px;font-size:16px}
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>Simulador: Proyectil desde Cañón — Energía cinética y potencial</h1>
+      <div style="font-size:0.85rem;color:var(--muted)">Optimizado para celular — toca para controlar</div>
+    </header>
+
+    <div class="main">
+      <div class="stage">
+        <div class="canvas-wrap">
+          <canvas id="scene"></canvas>
+          <canvas id="chart"></canvas>
+        </div>
+
+        <div class="controls" role="region" aria-label="Controles del simulador">
+          <div class="control-row">
+            <label for="mass">Masa (kg): <span id="massLabel">5.0</span></label>
+            <input id="mass" type="range" min="3" max="10" step="0.1" value="5">
+          </div>
+
+          <div class="control-row">
+            <label for="angle">Ángulo (grados): <span id="angleLabel">45</span>°</label>
+            <input id="angle" type="range" min="0" max="90" step="1" value="45">
+          </div>
+
+          <div class="control-row">
+            <label for="speed">Velocidad inicial (m/s): <span id="speedLabel">50</span></label>
+            <input id="speed" type="range" min="5" max="120" step="1" value="50">
+          </div>
+
+          <div class="buttons">
+            <button id="launchBtn">Disparar</button>
+            <button id="pauseBtn" class="secondary">Pausa</button>
+            <button id="resetBtn" class="secondary">Reiniciar</button>
+          </div>
+
+          <div class="readouts">
+            <div class="readout"><div style="font-size:0.75rem;color:var(--muted)">Tiempo (s)</div><div id="timeVal" class="num">0.00</div></div>
+            <div class="readout"><div style="font-size:0.75rem;color:var(--muted)">Energía cinética (J)</div><div id="keVal" class="num">0</div></div>
+            <div class="readout"><div style="font-size:0.75rem;color:var(--muted)">Energía potencial (J)</div><div id="peVal" class="num">0</div></div>
+          </div>
+
+          <div style="font-size:0.75rem;color:var(--muted);margin-top:8px">Masa afecta KE y PE (KE=½ m v², PE=m g h). Usa pausa para inspeccionar la gráfica.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /* Parámetros y elementos */
+    const scene = document.getElementById('scene');
+    const chart = document.getElementById('chart');
+    const massEl = document.getElementById('mass');
+    const angleEl = document.getElementById('angle');
+    const speedEl = document.getElementById('speed');
+    const massLabel = document.getElementById('massLabel');
+    const angleLabel = document.getElementById('angleLabel');
+    const speedLabel = document.getElementById('speedLabel');
+    const launchBtn = document.getElementById('launchBtn');
+    const pauseBtn = document.getElementById('pauseBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const timeVal = document.getElementById('timeVal');
+    const keVal = document.getElementById('keVal');
+    const peVal = document.getElementById('peVal');
+
+    // adaptar tamaño del canvas al dispositivo (pixel ratio)
+    function fitCanvas(canvas){
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = Math.round(rect.width * dpr);
+      canvas.height = Math.round(rect.height * dpr);
+      canvas.getContext('2d').setTransform(dpr,0,0,dpr,0,0);
+    }
+
+    function resizeAll(){
+      fitCanvas(scene);
+      fitCanvas(chart);
+      drawScene();
+      drawChartBackground();
+    }
+    window.addEventListener('resize', resizeAll);
+
+    // estado de la simulación
+    let sim = {
+      running:false, paused:false, t:0, dt:1/60,
+      x:0,y:0,vx:0,vy:0,
+      trail:[], energyHistory:[], timeHistory:[],
+      g:9.81
+    };
+
+    // escala (metros -> pixels) calculada dinámicamente según velocidad y ángulo para que la trayectoria quepa en pantalla
+    function computeScale(v0,angle){
+      // rango estimado para projectile: R = v0^2 * sin(2θ) / g (m)
+      const rad = angle*Math.PI/180;
+      const range = (v0*v0*Math.sin(2*rad))/sim.g;
+      const maxRange = Math.max(range, 20);
+      // allow some margin
+      const padding=40;
+      const pxPerMeter = (scene.clientWidth - padding) / (maxRange || 1);
+      // ve
