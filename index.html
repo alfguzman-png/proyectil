@@ -2,241 +2,264 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Simulación de Proyectil</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Simulador de Cañón</title>
   <style>
     body {
       margin: 0;
-      font-family: sans-serif;
+      overflow: hidden;
+      background-color: #87ceeb; /* celeste cielo */
+      font-family: Arial, sans-serif;
+    }
+
+    canvas {
+      background-color: #87ceeb;
+      display: block;
+    }
+
+    #controls {
+      position: absolute;
+      top: 20px;
+      right: 10px;
+      background: rgba(255, 255, 255, 0.9);
+      padding: 10px;
+      border-radius: 10px;
       display: flex;
       flex-direction: column;
-      align-items: center;
-      background: #f0f0f0;
-    }
-    #controls {
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: center;
       gap: 10px;
-      margin: 10px;
+      z-index: 2;
+      width: 150px;
     }
-    label {
+
+    .button {
+      padding: 10px;
+      border: none;
+      border-radius: 5px;
+      background: #4CAF50;
+      color: white;
+      font-weight: bold;
+      cursor: pointer;
+      transition: transform 0.2s;
+    }
+
+    .button:hover {
+      transform: scale(1.05);
+      background: #45a049;
+    }
+
+    label, input, select {
       font-size: 14px;
     }
-    input[type=range] {
-      width: 100px;
-    }
-    button {
-      padding: 10px 20px;
-      font-size: 16px;
-      border: none;
-      background: #333;
-      color: white;
-      border-radius: 5px;
-    }
-    canvas {
-      touch-action: none;
-    }
+
     #chart-container {
-      width: 90%;
-      max-width: 600px;
+      position: absolute;
+      bottom: 0;
+      right: 0;
+      width: 100%;
+      max-height: 200px;
+      background: white;
+      z-index: 1;
+    }
+
+    #energyChart {
+      width: 100%;
+      height: 100%;
     }
   </style>
 </head>
 <body>
+  <canvas id="canvas"></canvas>
+
   <div id="controls">
-    <div>
-      <label>Masa: <span id="massValue">1</span> kg</label><br>
-      <input type="range" id="massSlider" min="0.5" max="5" step="0.1" value="1">
-    </div>
-    <div>
-      <label>Ángulo: <span id="angleValue">45</span>°</label><br>
-      <input type="range" id="angleSlider" min="10" max="80" step="1" value="45">
-    </div>
-    <button id="launchBtn">Lanzar</button>
-    <button id="pauseBtn">Pausar</button>
+    <label>Ángulo (0°-90°):</label>
+    <input type="range" id="angle" min="0" max="90" value="45" />
+    <label>Masa (kg):</label>
+    <input type="range" id="mass" min="3" max="10" value="5" />
+    <button class="button" onclick="shoot()">Disparar</button>
+    <button class="button" onclick="pause()">Pausar</button>
+    <button class="button" onclick="reset()">Reiniciar</button>
+    <label>Gravedad:</label>
+    <select id="gravitySelect" onchange="changeGravity()">
+      <option value="1.62">Luna</option>
+      <option value="9.81" selected>Tierra</option>
+      <option value="8.87">Venus</option>
+      <option value="3.71">Marte</option>
+      <option value="24.79">Júpiter</option>
+      <option value="11.15">Neptuno</option>
+    </select>
+    <div>Tiempo: <span id="time">0.00</span> s</div>
   </div>
 
   <div id="chart-container">
     <canvas id="energyChart"></canvas>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/p5.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script>
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    // Variables de estado
+    let gravity = 9.81;
     let angle = 45;
-    let mass = 1;
-    let velocity = 50;
-    let projectile;
-    let launched = false;
+    let mass = 5;
+    let time = 0;
     let paused = false;
-    let groundY;
-    let startTime;
-    let flightTime = 0;
+    let projectile = null;
+    let path = [];
 
-    // Chart data
-    let energyChart;
-    let kineticData = [];
-    let potentialData = [];
-    let timeData = [];
+    const groundY = canvas.height - 50;
 
-    function setup() {
-      createCanvas(windowWidth, windowHeight * 0.5);
-      groundY = height - 20;
-      initChart();
-    }
-
-    function draw() {
-      background(240);
-      drawGround();
-      drawCannon();
-
-      if (launched && projectile) {
-        if (!paused) {
-          projectile.update();
-          if (!projectile.landed) {
-            const t = (millis() - startTime) / 1000;
-            const KE = 0.5 * mass * (projectile.vx ** 2 + projectile.vy ** 2);
-            const PE = mass * 9.8 * (groundY - projectile.y);
-            updateChart(t, KE, PE);
-          }
-        }
-        projectile.display();
-        if (projectile.landed && flightTime === 0) {
-          flightTime = (millis() - startTime) / 1000;
-          alert("Tiempo de vuelo: " + flightTime.toFixed(2) + " s");
+    // Chart setup
+    const energyChart = new Chart(document.getElementById("energyChart").getContext("2d"), {
+      type: 'line',
+      data: {
+        labels: [],
+        datasets: [
+          { label: 'Energía Cinética (J)', data: [], borderColor: 'red', fill: false },
+          { label: 'Energía Potencial (J)', data: [], borderColor: 'blue', fill: false }
+        ]
+      },
+      options: {
+        animation: false,
+        responsive: true,
+        scales: {
+          x: { title: { display: true, text: 'Tiempo (s)' } },
+          y: { title: { display: true, text: 'Energía (J)' } }
         }
       }
-    }
+    });
 
     function drawGround() {
-      stroke(0);
-      line(0, groundY, width, groundY);
+      ctx.fillStyle = "#7CFC00"; // verde claro
+      ctx.fillRect(0, groundY, canvas.width, canvas.height - groundY);
     }
 
-    function drawCannon() {
-      push();
-      translate(50, groundY);
-      stroke(0);
-      strokeWeight(10);
-      const angleRad = radians(-angle);
-      line(0, 0, 50 * cos(angleRad), -50 * sin(angleRad));
-      pop();
+    function drawCannon(angleDeg) {
+      const x = 100;
+      const y = groundY;
+      const length = 80;
+      const angleRad = (angleDeg * Math.PI) / 180;
+
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(-angleRad);
+      ctx.fillStyle = "black";
+      ctx.fillRect(0, -10, length, 20);
+      ctx.restore();
+
+      // Ruedas
+      ctx.beginPath();
+      ctx.arc(80, y + 10, 10, 0, 2 * Math.PI);
+      ctx.arc(120, y + 10, 10, 0, 2 * Math.PI);
+      ctx.fillStyle = "black";
+      ctx.fill();
     }
 
-    function launchProjectile() {
-      const angleRad = radians(angle);
-      const vx = velocity * cos(angleRad);
-      const vy = -velocity * sin(angleRad);
-      projectile = new Projectile(50, groundY, vx, vy);
-      launched = true;
+    function drawProjectile(x, y) {
+      ctx.beginPath();
+      ctx.arc(x, y, 6, 0, 2 * Math.PI);
+      ctx.fillStyle = "red";
+      ctx.fill();
+    }
+
+    function shoot() {
+      angle = parseInt(document.getElementById("angle").value);
+      mass = parseFloat(document.getElementById("mass").value);
+      time = 0;
       paused = false;
-      startTime = millis();
-      flightTime = 0;
+      path = [];
 
-      // Reset chart
-      kineticData = [];
-      potentialData = [];
-      timeData = [];
-      energyChart.data.datasets[0].data = kineticData;
-      energyChart.data.datasets[1].data = potentialData;
-      energyChart.data.labels = timeData;
-      energyChart.update();
+      const v0 = 100;
+      const angleRad = angle * Math.PI / 180;
+      projectile = {
+        x: 100 + 80 * Math.cos(angleRad),
+        y: groundY - 80 * Math.sin(angleRad),
+        vx: v0 * Math.cos(angleRad),
+        vy: -v0 * Math.sin(angleRad),
+        active: true
+      };
+
+      energyChart.data.labels = [];
+      energyChart.data.datasets[0].data = [];
+      energyChart.data.datasets[1].data = [];
     }
 
-    class Projectile {
-      constructor(x, y, vx, vy) {
-        this.x = x;
-        this.y = y;
-        this.vx = vx;
-        this.vy = vy;
-        this.landed = false;
-      }
-
-      update() {
-        if (this.landed) return;
-        this.vy += 9.8 * (deltaTime / 1000);
-        this.x += this.vx * (deltaTime / 1000);
-        this.y += this.vy * (deltaTime / 1000);
-
-        if (this.y >= groundY) {
-          this.y = groundY;
-          this.vy = 0;
-          this.vx = 0;
-          this.landed = true;
-        }
-      }
-
-      display() {
-        fill('red');
-        noStroke();
-        ellipse(this.x, this.y, 15, 15);
-      }
-    }
-
-    // UI controls
-    document.getElementById("massSlider").addEventListener("input", (e) => {
-      mass = parseFloat(e.target.value);
-      document.getElementById("massValue").textContent = mass;
-    });
-
-    document.getElementById("angleSlider").addEventListener("input", (e) => {
-      angle = parseFloat(e.target.value);
-      document.getElementById("angleValue").textContent = angle;
-    });
-
-    document.getElementById("launchBtn").addEventListener("click", () => {
-      launchProjectile();
-    });
-
-    document.getElementById("pauseBtn").addEventListener("click", () => {
+    function pause() {
       paused = !paused;
-      document.getElementById("pauseBtn").textContent = paused ? "Reanudar" : "Pausar";
-    });
-
-    // Chart.js
-    function initChart() {
-      const ctx = document.getElementById('energyChart').getContext('2d');
-      energyChart = new Chart(ctx, {
-        type: 'line',
-        data: {
-          labels: timeData,
-          datasets: [
-            {
-              label: 'Energía Cinética (J)',
-              data: kineticData,
-              borderColor: 'blue',
-              fill: false
-            },
-            {
-              label: 'Energía Potencial (J)',
-              data: potentialData,
-              borderColor: 'green',
-              fill: false
-            }
-          ]
-        },
-        options: {
-          responsive: true,
-          animation: false,
-          scales: {
-            x: { title: { display: true, text: 'Tiempo (s)' } },
-            y: { title: { display: true, text: 'Energía (J)' } }
-          }
-        }
-      });
     }
 
-    function updateChart(t, KE, PE) {
-      timeData.push(t.toFixed(2));
-      kineticData.push(KE);
-      potentialData.push(PE);
+    function reset() {
+      projectile = null;
+      path = [];
+      time = 0;
+      energyChart.data.labels = [];
+      energyChart.data.datasets[0].data = [];
+      energyChart.data.datasets[1].data = [];
       energyChart.update();
     }
 
-    function windowResized() {
-      resizeCanvas(windowWidth, windowHeight * 0.5);
+    function changeGravity() {
+      gravity = parseFloat(document.getElementById("gravitySelect").value);
     }
+
+    function drawTrajectory() {
+      ctx.beginPath();
+      ctx.strokeStyle = "red";
+      for (let i = 0; i < path.length - 1; i++) {
+        ctx.moveTo(path[i].x, path[i].y);
+        ctx.lineTo(path[i + 1].x, path[i + 1].y);
+      }
+      ctx.stroke();
+    }
+
+    function updatePhysics(dt) {
+      if (!projectile || !projectile.active || paused) return;
+
+      projectile.vy += gravity * dt;
+      projectile.x += projectile.vx * dt;
+      projectile.y += projectile.vy * dt;
+
+      time += dt;
+
+      path.push({ x: projectile.x, y: projectile.y });
+
+      if (projectile.y >= groundY) {
+        projectile.y = groundY;
+        projectile.active = false;
+      }
+
+      // Energías
+      const KE = 0.5 * mass * (projectile.vx ** 2 + projectile.vy ** 2);
+      const PE = mass * gravity * (groundY - projectile.y) * 0.01;
+
+      energyChart.data.labels.push(time.toFixed(2));
+      energyChart.data.datasets[0].data.push(KE.toFixed(2));
+      energyChart.data.datasets[1].data.push(PE.toFixed(2));
+      energyChart.update();
+
+      document.getElementById("time").textContent = time.toFixed(2);
+    }
+
+    function loop() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawGround();
+      drawCannon(angle);
+      drawTrajectory();
+
+      if (projectile) drawProjectile(projectile.x, projectile.y);
+      updatePhysics(0.016); // ~60fps
+      requestAnimationFrame(loop);
+    }
+
+    window.addEventListener("resize", () => {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    });
+
+    loop();
   </script>
 </body>
 </html>
