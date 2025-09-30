@@ -2,120 +2,241 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Juego con Gravedad Planetaria</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Simulación de Proyectil</title>
   <style>
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
-
     body {
+      margin: 0;
       font-family: sans-serif;
-      background-color: #87CEEB; /* Celeste cielo */
-      overflow: hidden;
-      height: 100vh;
-      position: relative;
-    }
-
-    .ground {
-      position: absolute;
-      bottom: 0;
-      left: 0;
-      width: 100%;
-      height: 100px;
-      background-color: #90EE90; /* Verde claro */
-      z-index: 1;
-    }
-
-    .button-panel {
-      position: absolute;
-      right: 10px;
-      bottom: 110px;
       display: flex;
       flex-direction: column;
-      gap: 10px;
-      z-index: 2;
-      max-height: 60%;
-      overflow-y: auto;
-      padding-right: 5px;
-    }
-
-    .gravity-button {
-      width: 60px;
-      height: 60px;
-      background-color: #ffffffaa;
-      border: 2px solid #333;
-      border-radius: 12px;
-      display: flex;
-      justify-content: center;
       align-items: center;
-      font-size: 1.2em;
-      font-weight: bold;
-      cursor: pointer;
-      transition: transform 0.2s ease, background-color 0.2s ease;
-      backdrop-filter: blur(5px);
+      background: #f0f0f0;
     }
-
-    .gravity-button:hover {
-      transform: scale(1.1);
-      background-color: #ffffffdd;
+    #controls {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 10px;
+      margin: 10px;
     }
-
-    .gravity-button:active {
-      transform: scale(0.95);
-      background-color: #ccc;
+    label {
+      font-size: 14px;
     }
-
-    /* Celular: espacio para los botones */
-    @media (max-width: 600px) {
-      .gravity-button {
-        width: 50px;
-        height: 50px;
-        font-size: 1em;
-      }
+    input[type=range] {
+      width: 100px;
     }
-
-    .info-box {
-      position: absolute;
-      top: 10px;
-      left: 10px;
-      background-color: #ffffffcc;
-      padding: 10px 15px;
-      border-radius: 10px;
-      font-size: 1em;
-      z-index: 2;
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      border: none;
+      background: #333;
+      color: white;
+      border-radius: 5px;
+    }
+    canvas {
+      touch-action: none;
+    }
+    #chart-container {
+      width: 90%;
+      max-width: 600px;
     }
   </style>
 </head>
 <body>
-
-  <div class="info-box" id="info">Gravedad actual: Tierra (9.8 m/s²)</div>
-
-  <div class="button-panel">
-    <button class="gravity-button" onclick="setGravity('Tierra', 9.8)">🌍</button>
-    <button class="gravity-button" onclick="setGravity('Luna', 1.6)">🌕</button>
-    <button class="gravity-button" onclick="setGravity('Europa', 1.3)">🪐E</button>
-    <button class="gravity-button" onclick="setGravity('Júpiter', 24.8)">🪐J</button>
-    <button class="gravity-button" onclick="setGravity('Saturno', 10.4)">🪐S</button>
-    <button class="gravity-button" onclick="setGravity('Marte', 3.7)">🔴</button>
-    <button class="gravity-button" onclick="setGravity('Venus', 8.9)">🟠</button>
+  <div id="controls">
+    <div>
+      <label>Masa: <span id="massValue">1</span> kg</label><br>
+      <input type="range" id="massSlider" min="0.5" max="5" step="0.1" value="1">
+    </div>
+    <div>
+      <label>Ángulo: <span id="angleValue">45</span>°</label><br>
+      <input type="range" id="angleSlider" min="10" max="80" step="1" value="45">
+    </div>
+    <button id="launchBtn">Lanzar</button>
+    <button id="pauseBtn">Pausar</button>
   </div>
 
-  <div class="ground"></div>
+  <div id="chart-container">
+    <canvas id="energyChart"></canvas>
+  </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/p5.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script>
-    let currentGravity = 9.8;
+    let angle = 45;
+    let mass = 1;
+    let velocity = 50;
+    let projectile;
+    let launched = false;
+    let paused = false;
+    let groundY;
+    let startTime;
+    let flightTime = 0;
 
-    function setGravity(planet, gravity) {
-      currentGravity = gravity;
-      document.getElementById("info").textContent = `Gravedad actual: ${planet} (${gravity} m/s²)`;
-      
-      // Acá podrías actualizar tu física del juego usando currentGravity
-      console.log(`Gravedad cambiada a ${gravity} m/s² en ${planet}`);
+    // Chart data
+    let energyChart;
+    let kineticData = [];
+    let potentialData = [];
+    let timeData = [];
+
+    function setup() {
+      createCanvas(windowWidth, windowHeight * 0.5);
+      groundY = height - 20;
+      initChart();
+    }
+
+    function draw() {
+      background(240);
+      drawGround();
+      drawCannon();
+
+      if (launched && projectile) {
+        if (!paused) {
+          projectile.update();
+          if (!projectile.landed) {
+            const t = (millis() - startTime) / 1000;
+            const KE = 0.5 * mass * (projectile.vx ** 2 + projectile.vy ** 2);
+            const PE = mass * 9.8 * (groundY - projectile.y);
+            updateChart(t, KE, PE);
+          }
+        }
+        projectile.display();
+        if (projectile.landed && flightTime === 0) {
+          flightTime = (millis() - startTime) / 1000;
+          alert("Tiempo de vuelo: " + flightTime.toFixed(2) + " s");
+        }
+      }
+    }
+
+    function drawGround() {
+      stroke(0);
+      line(0, groundY, width, groundY);
+    }
+
+    function drawCannon() {
+      push();
+      translate(50, groundY);
+      stroke(0);
+      strokeWeight(10);
+      const angleRad = radians(-angle);
+      line(0, 0, 50 * cos(angleRad), -50 * sin(angleRad));
+      pop();
+    }
+
+    function launchProjectile() {
+      const angleRad = radians(angle);
+      const vx = velocity * cos(angleRad);
+      const vy = -velocity * sin(angleRad);
+      projectile = new Projectile(50, groundY, vx, vy);
+      launched = true;
+      paused = false;
+      startTime = millis();
+      flightTime = 0;
+
+      // Reset chart
+      kineticData = [];
+      potentialData = [];
+      timeData = [];
+      energyChart.data.datasets[0].data = kineticData;
+      energyChart.data.datasets[1].data = potentialData;
+      energyChart.data.labels = timeData;
+      energyChart.update();
+    }
+
+    class Projectile {
+      constructor(x, y, vx, vy) {
+        this.x = x;
+        this.y = y;
+        this.vx = vx;
+        this.vy = vy;
+        this.landed = false;
+      }
+
+      update() {
+        if (this.landed) return;
+        this.vy += 9.8 * (deltaTime / 1000);
+        this.x += this.vx * (deltaTime / 1000);
+        this.y += this.vy * (deltaTime / 1000);
+
+        if (this.y >= groundY) {
+          this.y = groundY;
+          this.vy = 0;
+          this.vx = 0;
+          this.landed = true;
+        }
+      }
+
+      display() {
+        fill('red');
+        noStroke();
+        ellipse(this.x, this.y, 15, 15);
+      }
+    }
+
+    // UI controls
+    document.getElementById("massSlider").addEventListener("input", (e) => {
+      mass = parseFloat(e.target.value);
+      document.getElementById("massValue").textContent = mass;
+    });
+
+    document.getElementById("angleSlider").addEventListener("input", (e) => {
+      angle = parseFloat(e.target.value);
+      document.getElementById("angleValue").textContent = angle;
+    });
+
+    document.getElementById("launchBtn").addEventListener("click", () => {
+      launchProjectile();
+    });
+
+    document.getElementById("pauseBtn").addEventListener("click", () => {
+      paused = !paused;
+      document.getElementById("pauseBtn").textContent = paused ? "Reanudar" : "Pausar";
+    });
+
+    // Chart.js
+    function initChart() {
+      const ctx = document.getElementById('energyChart').getContext('2d');
+      energyChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: timeData,
+          datasets: [
+            {
+              label: 'Energía Cinética (J)',
+              data: kineticData,
+              borderColor: 'blue',
+              fill: false
+            },
+            {
+              label: 'Energía Potencial (J)',
+              data: potentialData,
+              borderColor: 'green',
+              fill: false
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          animation: false,
+          scales: {
+            x: { title: { display: true, text: 'Tiempo (s)' } },
+            y: { title: { display: true, text: 'Energía (J)' } }
+          }
+        }
+      });
+    }
+
+    function updateChart(t, KE, PE) {
+      timeData.push(t.toFixed(2));
+      kineticData.push(KE);
+      potentialData.push(PE);
+      energyChart.update();
+    }
+
+    function windowResized() {
+      resizeCanvas(windowWidth, windowHeight * 0.5);
     }
   </script>
-
 </body>
 </html>
