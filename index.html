@@ -1,228 +1,121 @@
-```html
-<!doctype html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
-  <title>Simulador de Proyectil</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Juego con Gravedad Planetaria</title>
   <style>
-    html,body{
-      height:100%;margin:0;font-family:Arial, sans-serif;
-      background:#ffeb3b; /* fondo amarillo */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
     }
-    .app{display:flex;flex-direction:column;min-height:100vh;padding:10px;gap:10px}
-    header{font-size:1rem;color:#000;text-align:center;font-weight:bold;margin-bottom:6px}
-    .stage{display:flex;flex-direction:column;gap:8px;align-items:center}
-    canvas{border:2px solid #000;border-radius:10px;box-shadow:0 4px 10px rgba(0,0,0,.2);width:100%;display:block}
-    #scene{height:50vh;min-height:260px}
-    #chart{height:25vh;min-height:120px}
-    .controls{background:#222;color:#eee;padding:10px;border-radius:10px;max-width:500px;width:100%}
-    .control-row{display:flex;flex-direction:column;gap:4px;margin-bottom:8px}
-    label{font-size:0.9rem}
-    input[type=range]{width:100%}
-    .buttons{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
-    button{flex:1;padding:10px;border-radius:8px;border:0;font-weight:bold}
-    #launchBtn{background:#4caf50;color:#fff}
-    #pauseBtn{background:#f44336;color:#fff}
-    #resetBtn{background:#607d8b;color:#fff}
-    .readouts{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
-    .readout{flex:1;min-width:90px;background:#333;color:#fff;padding:6px;border-radius:8px;text-align:center}
-    .num{font-weight:bold;font-size:1.1rem}
-    @media (max-width:800px){
-      #scene{height:40vh}
-      #chart{height:20vh}
-      button{padding:12px;font-size:16px}
+
+    body {
+      font-family: sans-serif;
+      background-color: #87CEEB; /* Celeste cielo */
+      overflow: hidden;
+      height: 100vh;
+      position: relative;
+    }
+
+    .ground {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      height: 100px;
+      background-color: #90EE90; /* Verde claro */
+      z-index: 1;
+    }
+
+    .button-panel {
+      position: absolute;
+      right: 10px;
+      bottom: 110px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      z-index: 2;
+      max-height: 60%;
+      overflow-y: auto;
+      padding-right: 5px;
+    }
+
+    .gravity-button {
+      width: 60px;
+      height: 60px;
+      background-color: #ffffffaa;
+      border: 2px solid #333;
+      border-radius: 12px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-size: 1.2em;
+      font-weight: bold;
+      cursor: pointer;
+      transition: transform 0.2s ease, background-color 0.2s ease;
+      backdrop-filter: blur(5px);
+    }
+
+    .gravity-button:hover {
+      transform: scale(1.1);
+      background-color: #ffffffdd;
+    }
+
+    .gravity-button:active {
+      transform: scale(0.95);
+      background-color: #ccc;
+    }
+
+    /* Celular: espacio para los botones */
+    @media (max-width: 600px) {
+      .gravity-button {
+        width: 50px;
+        height: 50px;
+        font-size: 1em;
+      }
+    }
+
+    .info-box {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background-color: #ffffffcc;
+      padding: 10px 15px;
+      border-radius: 10px;
+      font-size: 1em;
+      z-index: 2;
     }
   </style>
 </head>
 <body>
-  <div class="app">
-    <header>Simulador: Energía Cinética y Potencial de un Proyectil</header>
-    <div class="stage">
-      <canvas id="scene"></canvas>
-      <canvas id="chart"></canvas>
-      <div class="controls">
-        <div class="control-row">
-          <label for="mass">Masa (kg): <span id="massLabel">5</span></label>
-          <input id="mass" type="range" min="3" max="10" step="0.1" value="5">
-        </div>
-        <div class="control-row">
-          <label for="angle">Ángulo (°): <span id="angleLabel">45</span></label>
-          <input id="angle" type="range" min="0" max="90" step="1" value="45">
-        </div>
-        <div class="control-row">
-          <label for="speed">Velocidad inicial (km/h): <span id="speedLabel">30</span></label>
-          <input id="speed" type="range" min="5" max="60" step="1" value="30">
-        </div>
-        <div class="buttons">
-          <button id="launchBtn">Disparar</button>
-          <button id="pauseBtn">Pausa</button>
-          <button id="resetBtn">Reiniciar</button>
-        </div>
-        <div class="readouts">
-          <div class="readout"><div>Tiempo (s)</div><div id="timeVal" class="num">0.00</div></div>
-          <div class="readout"><div>KE (J)</div><div id="keVal" class="num">0</div></div>
-          <div class="readout"><div>PE (J)</div><div id="peVal" class="num">0</div></div>
-        </div>
-      </div>
-    </div>
+
+  <div class="info-box" id="info">Gravedad actual: Tierra (9.8 m/s²)</div>
+
+  <div class="button-panel">
+    <button class="gravity-button" onclick="setGravity('Tierra', 9.8)">🌍</button>
+    <button class="gravity-button" onclick="setGravity('Luna', 1.6)">🌕</button>
+    <button class="gravity-button" onclick="setGravity('Europa', 1.3)">🪐E</button>
+    <button class="gravity-button" onclick="setGravity('Júpiter', 24.8)">🪐J</button>
+    <button class="gravity-button" onclick="setGravity('Saturno', 10.4)">🪐S</button>
+    <button class="gravity-button" onclick="setGravity('Marte', 3.7)">🔴</button>
+    <button class="gravity-button" onclick="setGravity('Venus', 8.9)">🟠</button>
   </div>
 
+  <div class="ground"></div>
+
   <script>
-    const scene=document.getElementById('scene');
-    const chart=document.getElementById('chart');
-    const massEl=document.getElementById('mass');
-    const angleEl=document.getElementById('angle');
-    const speedEl=document.getElementById('speed');
-    const massLabel=document.getElementById('massLabel');
-    const angleLabel=document.getElementById('angleLabel');
-    const speedLabel=document.getElementById('speedLabel');
-    const launchBtn=document.getElementById('launchBtn');
-    const pauseBtn=document.getElementById('pauseBtn');
-    const resetBtn=document.getElementById('resetBtn');
-    const timeVal=document.getElementById('timeVal');
-    const keVal=document.getElementById('keVal');
-    const peVal=document.getElementById('peVal');
+    let currentGravity = 9.8;
 
-    function fitCanvas(canvas){
-      const dpr=Math.min(window.devicePixelRatio||1,2);
-      const rect=canvas.getBoundingClientRect();
-      canvas.width=Math.round(rect.width*dpr);
-      canvas.height=Math.round(rect.height*dpr);
-      canvas.getContext('2d').setTransform(dpr,0,0,dpr,0,0);
+    function setGravity(planet, gravity) {
+      currentGravity = gravity;
+      document.getElementById("info").textContent = `Gravedad actual: ${planet} (${gravity} m/s²)`;
+      
+      // Acá podrías actualizar tu física del juego usando currentGravity
+      console.log(`Gravedad cambiada a ${gravity} m/s² en ${planet}`);
     }
-    function resizeAll(){
-      fitCanvas(scene); fitCanvas(chart);
-      drawScene(); drawChartBackground();
-    }
-    window.addEventListener('resize',resizeAll);
-
-    let sim={
-      running:false,paused:false,t:0,dt:1/60,
-      x:0,y:0,vx:0,vy:0,trail:[],
-      g:9.81,scale:1,originPx:{x:0,y:0},
-      energyHistory:[],timeHistory:[]
-    };
-
-    function computeScale(v0,angleDeg){
-      const rad=angleDeg*Math.PI/180;
-      const range=(v0*v0*Math.sin(2*rad))/sim.g;
-      const maxRange=Math.max(range,20);
-      const padding=40;
-      const pxPerMeter=(scene.clientWidth-padding)/(maxRange||1);
-      const H=(v0*v0*Math.sin(rad)*Math.sin(rad))/(2*sim.g);
-      const pxPerMeterY=(scene.clientHeight-padding)/Math.max(H*1.4,10);
-      return {pxPerMeter:Math.min(pxPerMeter,pxPerMeterY)};
-    }
-
-    function drawScene(){
-      const ctx=scene.getContext('2d');
-      ctx.clearRect(0,0,scene.width,scene.height);
-      const w=scene.clientWidth,h=scene.clientHeight;
-      ctx.fillStyle='#ffeb3b'; ctx.fillRect(0,0,w,h);
-      ctx.fillStyle='#000'; ctx.fillRect(0,h-20,w,20);
-
-      const cannonX=60, cannonY=h-20;
-      const angle=parseFloat(angleEl.value)*Math.PI/180;
-      ctx.save();
-      ctx.translate(cannonX,cannonY);
-      ctx.rotate(-angle);
-      ctx.fillStyle='#000';
-      ctx.fillRect(0,-8,60,16);
-      ctx.restore();
-      ctx.beginPath();ctx.arc(cannonX,cannonY,18,0,2*Math.PI);ctx.fillStyle='#000';ctx.fill();
-
-      if(sim.trail.length>0){
-        ctx.strokeStyle='rgba(0,0,0,0.3)';ctx.beginPath();
-        sim.trail.forEach((p,i)=>{if(i===0)ctx.moveTo(p.px,p.py);else ctx.lineTo(p.px,p.py);});ctx.stroke();
-        const last=sim.trail[sim.trail.length-1];
-        ctx.fillStyle='red';ctx.beginPath();ctx.arc(last.px,last.py,8,0,2*Math.PI);ctx.fill();
-      }
-    }
-
-    function drawChartBackground(){
-      const ctx=chart.getContext('2d');
-      ctx.clearRect(0,0,chart.width,chart.height);
-      ctx.fillStyle='#111';ctx.fillRect(0,0,chart.clientWidth,chart.clientHeight);
-      ctx.fillStyle='#eee';ctx.font='12px sans-serif';
-      ctx.fillText('Energía (J): Azul=KE, Naranja=PE',10,16);
-    }
-    function drawChart(){
-      drawChartBackground();
-      const ctx=chart.getContext('2d');
-      const w=chart.clientWidth,h=chart.clientHeight;
-      const tHist=sim.timeHistory;const eHist=sim.energyHistory;
-      if(tHist.length<2)return;
-      let maxE=0;eHist.forEach(e=>{maxE=Math.max(maxE,e.ke,e.pe);});
-      if(maxE===0)maxE=1;const tMax=tHist[tHist.length-1];
-      ctx.strokeStyle='blue';ctx.beginPath();
-      eHist.forEach((e,i)=>{const x=(tHist[i]/tMax)*(w-20)+10;const y=h-20-(e.ke/maxE)*(h-40);if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);});ctx.stroke();
-      ctx.strokeStyle='orange';ctx.beginPath();
-      eHist.forEach((e,i)=>{const x=(tHist[i]/tMax)*(w-20)+10;const y=h-20-(e.pe/maxE)*(h-40);if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);});ctx.stroke();
-    }
-
-    function startLaunch(){
-      sim.t=0;sim.trail=[];sim.energyHistory=[];sim.timeHistory=[];
-      sim.running=true;sim.paused=false;pauseBtn.textContent="Pausa";
-      const m=parseFloat(massEl.value);
-      const angleDeg=parseFloat(angleEl.value);
-      const v0=parseFloat(speedEl.value)/3.6; // km/h -> m/s
-      const rad=angleDeg*Math.PI/180;
-      sim.vx=v0*Math.cos(rad);sim.vy=v0*Math.sin(rad);
-      sim.x=0;sim.y=0;
-      sim.scale=computeScale(v0,angleDeg).pxPerMeter;
-      sim.originPx={x:60,y:scene.clientHeight-20};
-      pushPoint();
-      if(!animLoop)animLoop=requestAnimationFrame(loop);
-    }
-
-    function pushPoint(){
-      const px=sim.originPx.x+sim.x*sim.scale;
-      const py=sim.originPx.y-sim.y*sim.scale;
-      sim.trail.push({x:sim.x,y:sim.y,px,py});
-      const m=parseFloat(massEl.value);
-      const v=Math.sqrt(sim.vx*sim.vx+sim.vy*sim.vy);
-      const ke=0.5*m*v*v;const pe=m*sim.g*sim.y;
-      sim.energyHistory.push({ke,pe});sim.timeHistory.push(sim.t);
-      timeVal.textContent=sim.t.toFixed(2);
-      keVal.textContent=ke.toFixed(1);
-      peVal.textContent=pe.toFixed(1);
-    }
-
-    function step(){
-      sim.t+=sim.dt;
-      sim.vy-=sim.g*sim.dt;
-      sim.x+=sim.vx*sim.dt;
-      sim.y+=sim.vy*sim.dt;
-      if(sim.y<0){sim.y=0;pushPoint();sim.running=false;return;}
-      pushPoint();
-    }
-
-    let animLoop=null;
-    function loop(){
-      if(sim.running&&!sim.paused){step();}
-      render();
-      if(sim.running||sim.paused){animLoop=requestAnimationFrame(loop);}
-      else{drawChart();cancelAnimationFrame(animLoop);animLoop=null;}
-    }
-    function render(){drawScene();drawChart();}
-
-    launchBtn.addEventListener('click',startLaunch);
-    pauseBtn.addEventListener('click',()=>{
-      if(!sim.running)return;
-      sim.paused=!sim.paused;
-      pauseBtn.textContent=sim.paused?"Reanudar":"Pausa";
-    });
-    resetBtn.addEventListener('click',()=>{
-      sim.running=false;sim.trail=[];sim.energyHistory=[];sim.timeHistory=[];
-      sim.t=0;drawScene();drawChartBackground();
-      timeVal.textContent="0.00";keVal.textContent="0";peVal.textContent="0";
-    });
-    massEl.addEventListener('input',()=>{massLabel.textContent=massEl.value;drawScene();});
-    angleEl.addEventListener('input',()=>{angleLabel.textContent=angleEl.value;drawScene();});
-    speedEl.addEventListener('input',()=>{speedLabel.textContent=speedEl.value;});
-    resizeAll();
   </script>
+
 </body>
 </html>
-```
